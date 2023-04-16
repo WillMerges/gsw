@@ -7,14 +7,15 @@
 *
 ******************************************************************************/
 
+#ifndef LOGGER_H
+#define LOGGER_H
+
 #include <stdlib.h>
 #include <stdint.h>
 #include <sys/un.h>
 
 #include "common/types.h"
 
-#ifndef LOGGER_H
-#define LOGGER_H
 
 // a logger opens a UNIX socket based on a filename for the logging type
 
@@ -23,6 +24,10 @@
 
 class Logger {
 public:
+    /// the maximum number of bytes that can be sent in a log message
+    /// NOTE: cannot exceed the UNIX domain socket MTU
+    static const size_t MAX_LOG_SIZE = 4096;
+
     /// @brief constructor
     /// @param filename     a unique filename bound to logging messages
     Logger(const char* filename);
@@ -31,8 +36,9 @@ public:
     virtual ~Logger();
 
     /// @brief initialize the logger
+    /// @param filename     a unique filename bound to logging messages
     /// @return
-    RetType init();
+    RetType init(const char* filename);
 
     /// @brief log data
     /// @param data     the buffer of bytes to log

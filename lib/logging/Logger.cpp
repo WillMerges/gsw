@@ -10,6 +10,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
+#include <string>
 
 #include "lib/logging/Logger.h"
 
@@ -18,7 +19,7 @@
 Logger::Logger(const char* filename) : m_filename(filename), m_sd(-1) {
     // attempt to initialize
     // don't error if it fails
-    init();
+    init(filename);
 };
 
 /// @brief destructor
@@ -29,8 +30,19 @@ Logger::~Logger() {
 }
 
 /// @brief initialize the logger
+/// @param filename     a unique filename bound to logging messages
 /// @return
-RetType Logger::init() {
+RetType Logger::init(const char* filename) {
+    char* gsw_home = getenv("GSWHOME");
+    if(NULL == gsw_home) {
+        return FAILURE;
+    }
+
+    std::string file = gsw_home;
+    file += "/";
+    file += filename;
+    const char* addr_str = file.c_str();
+
     // open the UNIX socket
     m_sd = socket(AF_UNIX, SOCK_DGRAM, 0);
 
@@ -43,9 +55,9 @@ RetType Logger::init() {
 
     size_t len = 0;
     while(len < (sizeof(m_addr.sun_path) / sizeof(char))) {
-        m_addr.sun_path[len] = m_filename[len];
+        m_addr.sun_path[len] = addr_str[len];
 
-        if('\0' == m_filename[len]) {
+        if('\0' == addr_str[len]) {
             break;
         }
 
