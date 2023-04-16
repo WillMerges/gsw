@@ -33,8 +33,8 @@ namespace MessageLoggerDecls {
     /// @brief maps kinds of messages to a string name
     extern const char* message_type_str[NUM_MESSAGE_T + 1];
 
-    /// @brief the file path (relative to GSW_HOME)
-    static const char* ADDRESS_FILE = "lib/logging/Logger.h";
+    /// @brief the file path to use for addressing (relative to GSW_HOME)
+    static const char* ADDRESS_FILE = "lib/logging/PacketLogger.h";
 };
 
 
