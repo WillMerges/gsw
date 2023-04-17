@@ -13,14 +13,17 @@
 #include <stdint.h>
 #include <string>
 
-/// @brief get the number of seconds since the epoch in UTC time
-/// @return the time in seconds
-double timestamp();
+namespace time_util {
 
-/// @brief convert a timestamp to a string in YYYY-MM-DDTHH:mm:ssZ format
-/// @param timestamp    the time in seconds since the epoch
-/// @param subsecond    whether additional subsecond precision should be included,
-///                     making the timestamp in YYYY-MM-DDTHH:mm:ss.fZ format.
-const char* timestamp_to_string(double timestamp, bool subsecond=false);
+    /// @brief get the number of seconds since the epoch in UTC
+    /// @return the time in seconds
+    double now();
+
+    /// @brief convert a timestamp to a string in YYYY-MM-DDTHH:mm:ssZ format
+    /// @param timestamp    the time in seconds since the epoch
+    /// @param subsecond    whether additional subsecond precision should be included,
+    ///                     making the timestamp in YYYY-MM-DDTHH:mm:ss.fZ format.
+    const char* to_string(double timestamp, bool subsecond=false);
+}
 
 #endif

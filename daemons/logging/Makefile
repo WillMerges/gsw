@@ -11,7 +11,7 @@ CFLAGS = -I$(GSW_HOME) -Wall -Wextra -Wpedantic -ggdb
 CPPFLAGS = -I$(GSW_HOME) -Wall -Wextra -Wpedantic -ggdb
 LDFLAGS = -L$(GSW_HOME)/lib/bin/ -Wl,-rpath=$(GSW_HOME)/lib/bin/
 
-LIBS = -llogging
+LIBS = -llogging -ltime
 
 CPP_FILES := $(wildcard src/*.cpp)
 C_FILES := $(wildcard src/*.c)

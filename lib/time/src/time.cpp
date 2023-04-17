@@ -13,9 +13,9 @@
 #include "lib/time/time.h"
 
 
-/// @brief get the number of milliseconds since the epoch in UTC time
+/// @brief get the number of milliseconds since the epoch in UTC
 /// @return the time in milliseconds
-double timestamp() {
+double time_util::now() {
     double ms;
 
     struct timespec time;
@@ -31,7 +31,7 @@ double timestamp() {
 /// @param timestamp    the time in milliseconds since the epoch
 /// @param subsecond    whether additional subsecond precision should be included,
 ///                     making the timestamp in YYYY-MM-DDTHH:mm:ss.fffZ format.
-const char* timestamp_to_string(double timestamp, bool subsecond) {
+const char* time_util::to_string(double timestamp, bool subsecond) {
     static char buff[4096];
 
     time_t seconds = timestamp / 1000;

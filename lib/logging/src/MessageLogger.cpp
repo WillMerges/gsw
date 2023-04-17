@@ -55,7 +55,7 @@ RetType MessageLogger::log_message(std::string msg, MessageLoggerDecls::message_
     output += MessageLoggerDecls::message_type_char[type];
 
     output += "[";
-    output += timestamp_to_string(timestamp(), true);
+    output += time_util::to_string(time_util::now(), true);
     output += "] ";
 
     output += "(" + m_className + "::" + m_funcName + ") ";
