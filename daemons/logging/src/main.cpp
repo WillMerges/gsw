@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #include "lib/time/time.h"
 #include "lib/logging/MessageLogger.h"
@@ -55,13 +56,62 @@ int main() {
         }
     }
 
-    path += "/";
-    path += curr_time;
+    std::string log_path = path + "/" + curr_time;
+    printf("Creating new logs at '%s'\n", log_path.c_str());
 
-    printf("Creating new logs at '%s'\n", path.c_str());
-
-    if(-1 == mkdir(path.c_str(), 0700)) {
+    if(-1 == mkdir(log_path.c_str(), 0700)) {
         perror("Failed to create log directory");
         exit(FAILURE);
     }
+
+    // create a directory for system messages
+    std::string msg_path = log_path + "/messages";
+
+    if(-1 == mkdir(msg_path.c_str(), 0700)) {
+        perror("Failed to create 'messages' sub directory");
+        exit(FAILURE);
+    }
+
+    std::string packets_path = log_path + "/packets";
+
+    if(-1 == mkdir(packets_path.c_str(), 0700)) {
+        perror("Failed to create 'packets' sub directory");
+        exit(FAILURE);
+    }
+
+
+    // update 'current' sym link
+    std::string link_path = path + "/current";
+
+    // remove it if it already exists
+    // don't check for error since it may not exist
+    remove(link_path.c_str());
+
+    if(-1 == symlink(log_path.c_str(), link_path.c_str())) {
+        perror("Failed to update 'current' symbolic link");
+        exit(FAILURE);
+    }
+
+    // TODO set up pipes so stdout of sub processes gets serialized line-by-line and printed to this stdout
+    // TODO kick off processes to log system messages and packets
+
+    // wait for exit of those processes
+
+    printf("\nAll logging processes exited, cleaning up\n");
+
+    // remove the 'current' sym link
+    if(-1 == remove(link_path.c_str())) {
+        perror("Failed to remove 'current' sym link");
+        exit(FAILURE);
+    }
+
+    // update the 'latest' sym link
+    link_path = path + "/latest";
+
+    if(-1 == symlink(log_path.c_str(), link_path.c_str())) {
+        perror("Failed to update 'latest' symbolic link");
+        exit(FAILURE);
+    }
+
+    printf("Done\n");
 }
