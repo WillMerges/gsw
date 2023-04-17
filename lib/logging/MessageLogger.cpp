@@ -8,6 +8,7 @@
 ******************************************************************************/
 
 #include "lib/logging/MessageLogger.h"
+#include "lib/time/time.h"
 
 /// @brief maps kinds of messages to a character
 ///        this character will be prepended to every log message to tell
@@ -53,9 +54,9 @@ RetType MessageLogger::log_message(std::string msg, MessageLoggerDecls::message_
     std::string output = "";
     output += MessageLoggerDecls::message_type_char[type];
 
-    gettimeofday(&m_time, NULL);
-    output += "[" + std::to_string(m_time.tv_sec) + "."
-                  + std::to_string(m_time.tv_usec) + "] ";
+    output += "[";
+    output += timestamp_to_string(timestamp(), true);
+    output += "] ";
 
     output += "(" + m_className + "::" + m_funcName + ") ";
     output += msg;

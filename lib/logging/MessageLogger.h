@@ -11,9 +11,9 @@
 #define MESSAGE_LOGGER_H
 
 #include <string>
-#include <sys/time.h>
 
 #include "lib/logging/Logger.h"
+
 
 // Message Logger type and data declarations
 namespace MessageLoggerDecls {
