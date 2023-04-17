@@ -1,4 +1,4 @@
-### Make libraries in subdirs ###
+# Make all library subdirs
 
 all: build copy
 
