@@ -11,6 +11,8 @@
 #define MESSAGE_LOGGER_H
 
 #include <string>
+#include <sys/socket.h>
+#include <sys/uio.h>
 
 #include "lib/logging/Logger.h"
 
@@ -25,13 +27,11 @@ namespace MessageLoggerDecls {
         NUM_MESSAGE_T
     } message_t;
 
-    /// @brief maps kinds of messages to a character
-    ///        this character will be prepended to every log message to tell
-    ///        the log daemon what kind of message it is
-    extern char message_type_char[NUM_MESSAGE_T + 1];
-
-    /// @brief maps kinds of messages to a string name
-    extern const char* message_type_str[NUM_MESSAGE_T + 1];
+    /// @brief data prepended to log messages
+    typedef struct {
+        double timestamp;
+        message_t type;
+    } info_t;
 
     /// @brief the file path to use for addressing (relative to GSW_HOME)
     static const char* ADDRESS_FILE = "lib/logging/PacketLogger.h";
@@ -61,6 +61,9 @@ private:
     std::string m_funcName;
 
     struct timeval m_time;
+
+    MessageLoggerDecls::info_t m_info;
+    struct iovec m_vecs[2];
 };
 
 #endif

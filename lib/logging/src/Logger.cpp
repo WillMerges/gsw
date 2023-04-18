@@ -7,7 +7,6 @@
 *
 ******************************************************************************/
 
-#include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
 #include <string>
@@ -72,6 +71,16 @@ RetType Logger::init(const char* filename) {
         return FAILURE;
     }
 
+    // set the address field of the message header (for vectored I/O)
+    m_msg.msg_name = (void*)&m_addr;
+    m_msg.msg_namelen = sizeof(m_addr);
+
+    // zero unused fields of message header
+    m_msg.msg_control = NULL;
+
+    // msg_controllen is ignored when msg_control is NULL
+    // msg_flags is always ignored
+
     return SUCCESS;
 }
 
@@ -89,6 +98,21 @@ RetType Logger::log(uint8_t* data, size_t len) {
 
     if(-1 == sendto(m_sd, data, len, 0,
                     (struct sockaddr*)&m_addr, sizeof(m_addr))) {
+        return FAILURE;
+    }
+
+    return SUCCESS;
+}
+
+/// @brief log data (vectored I/O)
+/// @param vec  list of vectors
+/// @param len  number of vectors in vec
+/// @return
+RetType Logger::log_vec(struct iovec* vec, size_t len) {
+    m_msg.msg_iov = vec;
+    m_msg.msg_iovlen = len;
+
+    if(-1 == sendmsg(m_sd, &m_msg, 0)) {
         return FAILURE;
     }
 

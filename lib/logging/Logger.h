@@ -10,9 +10,11 @@
 #ifndef LOGGER_H
 #define LOGGER_H
 
+#include <sys/socket.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <sys/un.h>
+#include <sys/uio.h>
 
 #include "common/types.h"
 
@@ -46,6 +48,13 @@ public:
     /// @return
     RetType log(uint8_t* data, size_t len);
 
+    /// @brief log data (vectored I/O)
+    /// @param vec  list of vectors
+    /// @param len  number of vectors in vec
+    /// @return
+    RetType log_vec(struct iovec* vec, size_t len);
+
+
 private:
     // filename corresponding to logging messages of this type
     const char* m_filename;
@@ -55,6 +64,9 @@ private:
 
     // address to send logging messages to
     struct sockaddr_un m_addr;
+
+    // message header to send messages to
+    struct msghdr m_msg;
 };
 
 #endif

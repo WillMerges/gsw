@@ -10,8 +10,10 @@
 #ifndef PACKET_LOGGER_H
 #define PACKET_LOGGER_H
 
+#include <sys/socket.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <sys/uio.h>
 
 #include "lib/logging/Logger.h"
 
@@ -31,6 +33,10 @@ public:
     /// @param len      the length of buff in bytes
     /// @return
     RetType log_packet(uint8_t* buff, size_t len);
+
+private:
+    double timestamp;
+    struct iovec m_vecs[2];
 };
 
 #endif
