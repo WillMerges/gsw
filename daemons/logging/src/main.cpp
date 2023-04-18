@@ -21,10 +21,103 @@
 
 
 /// @brief log system messages
-void log_messages(bool verbose) {
-    // create an output directory
-
+/// @param dir  the directory to place message logs
+void log_messages(const char* dir) {
     // open the UNIX socket that system messages are sent to
+    int sd = socket(AF_UNIX, SOCK_DGRAM, 0);
+
+    if(-1 == sd) {
+        perror("Failed to open message logging socket");
+        exit(FAILURE);
+    }
+
+    struct sockaddr_un addr;
+    addr.sun_family = AF_UNIX;
+
+    // NOTE: we're guaranteed getenv returns non-NULL because we checked in main
+    std::string addr_file = getenv("GSW_HOME");
+    addr_file += "/";
+    addr_file += MessageLoggerDecls::ADDRESS_FILE;
+    const char* addr_str = addr_file.c_str();
+
+    size_t len = 0;
+    while(len < (sizeof(addr.sun_path) / sizeof(char))) {
+        addr.sun_path[len] = addr_str[len];
+
+        if('\0' == addr_str[len]) {
+            break;
+        }
+
+        len++;
+    }
+
+    if(len >= (sizeof(addr.sun_path) / sizeof(char))) {
+        // filename was too long!
+        printf("Filename '%s' used for UNIX address is too long\n", addr_str);
+        exit(FAILURE);
+    }
+
+    if(-1 == bind(sd, (struct sockaddr*)&addr, sizeof(addr))) {
+        perror("Failed to bind message logging socket");
+        exit(FAILURE);
+    }
+
+    size_t file_index = 0;
+    while(1) {
+        std::string filename = dir;
+        filename += "/";
+        filename += std::to_string(file_index);
+        filename += ".csv";
+
+        FILE* f = fopen(filename.c_str(), "w");
+        if(NULL == f) {
+            perror("Failed to open new log file");
+            exit(FAILURE);
+        }
+
+        // write the row header
+        std::string header = "time,type,message\n";
+
+        if(fwrite(header.c_str(), sizeof(char), header.length(), f) != header.length()) {
+            printf("Failed to write row header to message log file\n");
+            exit(FAILURE);
+        }
+
+        size_t lines = 1;
+        uint8_t buff[Logger::MAX_LOG_SIZE + sizeof(MessageLoggerDecls::info_t)];
+        while(lines < MAX_LINES_PER_FILE) {
+            ssize_t len = recv(sd, buff, Logger::MAX_LOG_SIZE + sizeof(MessageLoggerDecls::info_t), 0);
+
+            if(len < sizeof(MessageLoggerDecls::info_t) + 1) {
+                // no data received, try again
+                printf("Invalid amount of data read from message logging socket, read %d bytes\n", read);
+                continue;
+            }
+
+            MessageLoggerDecls::info_t* info = (MessageLoggerDecls::info_t*)buff;
+            std::string timestamp = time_util::to_string(info->timestamp, true);
+            std::string type = MessageLoggerDecls::message_str[info->type];
+
+            char* msg = (char*)(&(buff[sizeof(MessageLoggerDecls::info_t)]));
+            std::string csv_line = timestamp + "," + type + "," + msg + "\n";
+
+            if(fwrite(csv_line.c_str(), sizeof(char), csv_line.length(), f) != csv_line.length()) {
+                printf("Failed to write message to log file\n");
+                continue;
+            }
+            fflush(f);
+
+            // TODO echo to standard output
+            // pretty print it
+            printf("%s", csv_line.c_str());
+
+
+            lines++;
+        }
+
+        fclose(f);
+        file_index++;
+    }
 }
 
 
@@ -94,6 +187,8 @@ int main() {
 
     // TODO set up pipes so stdout of sub processes gets serialized line-by-line and printed to this stdout
     // TODO kick off processes to log system messages and packets
+
+    log_messages(msg_path.c_str());
 
     // wait for exit of those processes
 

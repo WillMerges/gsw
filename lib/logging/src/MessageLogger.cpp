@@ -10,6 +10,14 @@
 #include "lib/logging/MessageLogger.h"
 #include "lib/time/time.h"
 
+/// maps message types to strings
+const char* MessageLoggerDecls::message_str[MessageLoggerDecls::NUM_MESSAGE_T + 1] = \
+{
+    "INFO",     // information message
+    "WARN",     // warning message
+    "CRIT",     // critical error message
+    "UNKN"      // unknown message type
+};
 
 /// @brief constructor
 /// @param class_name  the name of the class the logger is in

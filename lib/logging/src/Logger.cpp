@@ -32,7 +32,7 @@ Logger::~Logger() {
 /// @param filename     a unique filename bound to logging messages
 /// @return
 RetType Logger::init(const char* filename) {
-    char* gsw_home = getenv("GSWHOME");
+    char* gsw_home = getenv("GSW_HOME");
     if(NULL == gsw_home) {
         return FAILURE;
     }
@@ -77,9 +77,8 @@ RetType Logger::init(const char* filename) {
 
     // zero unused fields of message header
     m_msg.msg_control = NULL;
-
-    // msg_controllen is ignored when msg_control is NULL
-    // msg_flags is always ignored
+    m_msg.msg_controllen = 0;
+    m_msg.msg_flags = 0;
 
     return SUCCESS;
 }
@@ -109,6 +108,12 @@ RetType Logger::log(uint8_t* data, size_t len) {
 /// @param len  number of vectors in vec
 /// @return
 RetType Logger::log_vec(struct iovec* vec, size_t len) {
+    if(-1 == m_sd) {
+        // no socket!
+        // init was never run successfully
+        return FAILURE;
+    }
+
     m_msg.msg_iov = vec;
     m_msg.msg_iovlen = len;
 

@@ -20,7 +20,7 @@
 // Packet Logger type and data declarations
 namespace PacketLoggerDecls {
     /// @brief the file path to use for addressing (relative to GSW_HOME)
-    static const char* ADDRESS_FILE = "lib/logging/PacketLogger.h";
+    static const char* ADDRESS_FILE = "packet_log_socket";
 };
 
 class PacketLogger : public Logger {

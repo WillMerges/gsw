@@ -27,6 +27,9 @@ namespace MessageLoggerDecls {
         NUM_MESSAGE_T
     } message_t;
 
+    /// maps message types to strings
+    extern const char* message_str[NUM_MESSAGE_T + 1];
+
     /// @brief data prepended to log messages
     typedef struct {
         double timestamp;
@@ -34,7 +37,7 @@ namespace MessageLoggerDecls {
     } info_t;
 
     /// @brief the file path to use for addressing (relative to GSW_HOME)
-    static const char* ADDRESS_FILE = "lib/logging/PacketLogger.h";
+    static const char* ADDRESS_FILE = "message_log_socket";
 };
 
 
