@@ -21,9 +21,9 @@
 namespace MessageLoggerDecls {
     /// @brief kinds of messages
     typedef enum {
-        INFO_MSG = 0,   // information message
-        WARN_MSG,       // warning message
-        CRIT_MSG,       // critical error message
+        INFO = 0,   // information message
+        WARN,       // warning message
+        CRIT,       // critical error message
         NUM_MESSAGE_T
     } message_t;
 
@@ -57,7 +57,7 @@ public:
     /// @param type  the type of message to log
     /// @return
     RetType log_message(std::string msg,
-             MessageLoggerDecls::message_t type = MessageLoggerDecls::INFO_MSG);
+             MessageLoggerDecls::message_t type = MessageLoggerDecls::INFO);
 
 private:
     std::string m_className;

@@ -35,6 +35,16 @@ const char* time_util::to_string(double timestamp, bool subsecond) {
     static char buff[4096];
 
     time_t seconds = timestamp / 1000;
+
+    // get the decimal seconds in 3 digits
+    // also checks if seconds should be rounded up
+    double remain = timestamp - floor(timestamp);
+    remain = round(remain * 1000);
+    if(remain == 1000) {
+        seconds++;
+        remain = 0;
+    }
+
     struct tm* tm = gmtime(&seconds);
 
     int len = snprintf(buff, 4095, "%04d-%02d-%02dT%02d:%02d:%02d",
@@ -42,10 +52,7 @@ const char* time_util::to_string(double timestamp, bool subsecond) {
                         tm->tm_hour, tm->tm_min, tm->tm_sec);
 
     if(subsecond) {
-        // get the decimal seconds in 3 digits
-        double remain = timestamp - floor(timestamp);
-        remain = round(remain * 1000);
-        snprintf(&(buff[len]), 4095 - len, ".%03d", (int)remain); // TODO pad right to 3 zeros
+        snprintf(&(buff[len]), 4095 - len, ".%03d", (int)remain);
     }
 
     // make sure always NULL terminated

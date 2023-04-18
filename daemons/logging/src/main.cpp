@@ -20,6 +20,22 @@
 #define MAX_FILE_SIZE (1 << 31) // limit binary files to 2^32 bytes
 
 
+// ANSI control escape codes for settings colors
+#define ANSI_RESET          "\033[0m"
+#define ANSI_GREEN_BOLD     "\033[1;32m"
+#define ANSI_YELLOW_BOLD    "\033[1;33m"
+#define ANSI_RED_BOLD       "\033[1;31m"
+#define ANSI_WHITE_BOLD     "\033[1;37m"
+
+// maps message type to escape code color settings
+const char* message_color[MessageLoggerDecls::NUM_MESSAGE_T] = \
+{
+    ANSI_GREEN_BOLD,
+    ANSI_YELLOW_BOLD,
+    ANSI_RED_BOLD
+};
+
+
 /// @brief log system messages
 /// @param dir  the directory to place message logs
 void log_messages(const char* dir) {
@@ -107,11 +123,11 @@ void log_messages(const char* dir) {
             }
             fflush(f);
 
-            // TODO echo to standard output
-            // pretty print it
-            printf("%s", csv_line.c_str());
-
-
+            // echo to standard output
+            const char* color = message_color[info->type];
+            printf("%s [%s%s%s] %s%s%s\n", timestamp.c_str(),
+                                           color, type.c_str(), ANSI_RESET,
+                                           ANSI_WHITE_BOLD, msg, ANSI_RESET);
             lines++;
         }
 

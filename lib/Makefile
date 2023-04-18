@@ -10,8 +10,6 @@ copy:
 	rm -rf bin || true > /dev/null
 	mkdir bin
 	-cp */*.so bin/
-	-cp dev/*/*.so bin/
-
 
 clean:
 	-$(MAKE) -C logging clean
