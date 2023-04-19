@@ -5,12 +5,15 @@
 *
 *  Author: Will Merges
 *
+*  Usage: ./logd [--messages] [--packets rate] [--help]
+*
 ******************************************************************************/
 
 #include <stdlib.h>
 #include <stdio.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <sys/select.h>
 
 #include "lib/time/time.h"
 #include "lib/logging/MessageLogger.h"
@@ -26,6 +29,7 @@
 #define ANSI_YELLOW_BOLD    "\033[1;33m"
 #define ANSI_RED_BOLD       "\033[1;31m"
 #define ANSI_WHITE_BOLD     "\033[1;37m"
+#define ANSI_MAGENTA_BOLD   "\033[1;35m"
 
 // maps message type to escape code color settings
 const char* message_color[MessageLoggerDecls::NUM_MESSAGE_T] = \
@@ -81,7 +85,7 @@ void log_messages(const char* dir) {
     size_t file_index = 0;
     while(1) {
         std::string filename = dir;
-        filename += "/";
+        filename += "/messages-";
         filename += std::to_string(file_index);
         filename += ".csv";
 
@@ -104,9 +108,9 @@ void log_messages(const char* dir) {
         while(lines < MAX_LINES_PER_FILE) {
             ssize_t len = recv(sd, buff, Logger::MAX_LOG_SIZE + sizeof(MessageLoggerDecls::info_t), 0);
 
-            if(len < sizeof(MessageLoggerDecls::info_t) + 1) {
+            if(len < (ssize_t)sizeof(MessageLoggerDecls::info_t)) {
                 // no data received, try again
-                printf("Invalid amount of data read from message logging socket, read %d bytes\n", read);
+                printf("Invalid amount of data read from message logging socket, read %li bytes\n", len);
                 continue;
             }
 
@@ -114,7 +118,14 @@ void log_messages(const char* dir) {
             std::string timestamp = time_util::to_string(info->timestamp, true);
             std::string type = MessageLoggerDecls::message_str[info->type];
 
-            char* msg = (char*)(&(buff[sizeof(MessageLoggerDecls::info_t)]));
+            const char* msg;
+            if(len == sizeof(MessageLoggerDecls::info_t)) {
+                // no message
+                msg = "";
+            } else {
+                msg = (char*)(&(buff[sizeof(MessageLoggerDecls::info_t)]));
+            }
+
             std::string csv_line = timestamp + "," + type + "," + msg + "\n";
 
             if(fwrite(csv_line.c_str(), sizeof(char), csv_line.length(), f) != csv_line.length()) {
@@ -133,6 +144,176 @@ void log_messages(const char* dir) {
 
         fclose(f);
         file_index++;
+    }
+}
+
+
+/// @brief log packets
+/// @param dir          the directory to place packet logs
+/// @param print_rate   print a message every 'print_rate' packets logged
+// TODO check sizes are correct according to configuration?
+//      maybe also configure whether to log short packets
+void log_packets(const char* dir, size_t print_rate) {
+    // open the UNIX socket that system messages are sent to
+    int sd = socket(AF_UNIX, SOCK_DGRAM, 0);
+
+    if(-1 == sd) {
+        perror("Failed to open packet logging socket");
+        exit(FAILURE);
+    }
+
+    struct sockaddr_un addr;
+    addr.sun_family = AF_UNIX;
+
+    // NOTE: we're guaranteed getenv returns non-NULL because we checked in main
+    std::string addr_file = getenv("GSW_HOME");
+    addr_file += "/";
+    addr_file += PacketLoggerDecls::ADDRESS_FILE;
+    const char* addr_str = addr_file.c_str();
+
+    size_t len = 0;
+    while(len < (sizeof(addr.sun_path) / sizeof(char))) {
+        addr.sun_path[len] = addr_str[len];
+
+        if('\0' == addr_str[len]) {
+            break;
+        }
+
+        len++;
+    }
+
+    if(len >= (sizeof(addr.sun_path) / sizeof(char))) {
+        // filename was too long!
+        printf("Filename '%s' used for UNIX address is too long\n", addr_str);
+        exit(FAILURE);
+    }
+
+    if(-1 == bind(sd, (struct sockaddr*)&addr, sizeof(addr))) {
+        perror("Failed to bind packet logging socket");
+        exit(FAILURE);
+    }
+
+    size_t file_index = 0;
+    while(1) {
+        std::string filename = dir;
+        filename += "/packets-";
+        filename += std::to_string(file_index);
+        filename += ".bin";
+
+        FILE* f = fopen(filename.c_str(), "w");
+        if(NULL == f) {
+            perror("Failed to open new log file");
+            exit(FAILURE);
+        }
+
+        uint32_t written = 0;
+        size_t packets = 0;
+        size_t total_packets = 0;
+        uint8_t buff[Logger::MAX_LOG_SIZE + sizeof(PacketLoggerDecls::info_t)];
+
+        while(written < (uint32_t)MAX_FILE_SIZE) {
+            ssize_t len = recv(sd, buff, Logger::MAX_LOG_SIZE + sizeof(PacketLoggerDecls::info_t), 0);
+
+            if(len < (ssize_t)sizeof(PacketLoggerDecls::info_t)) {
+                // no data received, try again
+                printf("Invalid amount of data read from packet logging socket, read %li bytes\n", len);
+                continue;
+            }
+
+            // write everything out
+            if((ssize_t)fwrite(buff, sizeof(uint8_t), len, f) != len) {
+                printf("Failed to write message message to log file\n");
+            }
+            fflush(f);
+
+            packets++;
+            if(packets >= print_rate) {
+                total_packets += packets;
+                packets = 0;
+                printf("%sReceived %lu packets%s\n", ANSI_MAGENTA_BOLD,
+                                                    total_packets,
+                                                    ANSI_RESET);
+            }
+
+            written += len;
+        }
+
+        fclose(f);
+        file_index++;
+    }
+}
+
+
+/// @brief buffer the output of two file descriptors and output them to stdout
+///        when a full line is buffered. The file descriptors should be pipes
+///        that are connected to the output of the message logging process and
+///        the packet logging process.
+/// @param msg  message logger stdout pipe
+/// @param pkt  packet logger stdout pipe
+/// returns when both pipes have been closed (usually by process exit)
+void pipe_output(int msg, int pkt) {
+    std::string msg_buff = "";
+    std::string pkt_buff = "";
+
+    fd_set set;
+
+    int nfds;
+    if(msg > pkt) {
+        nfds = msg + 1;
+    } else {
+        nfds = pkt + 1;
+    }
+
+    int exited = 0;
+    while(exited < 2) {
+        FD_ZERO(&set);
+        FD_SET(msg, &set);
+        FD_SET(pkt, &set);
+
+        if(-1 == select(nfds, &set, NULL, NULL, NULL)) {
+            perror("select failed, trying again");
+            continue;
+        }
+
+        if(FD_ISSET(msg, &set)) {
+            // data on msg
+            char chr;
+            if(1 != read(msg, &chr, 1)) {
+                perror("read failed on on message pipe");
+            } else {
+                if(EOF == chr) {
+                    printf("detected exit of message logger process\n");
+                    exited++;
+                } else if('\n' == chr) {
+                    // dump the buffer
+                    printf("%s\n", msg_buff.c_str());
+                    msg_buff = "";
+                } else {
+                    // buffer the character
+                    msg_buff += chr;
+                }
+            }
+        }
+
+        if(FD_ISSET(pkt, &set)) {
+            // data on pkt
+            char chr;
+            if(1 != read(pkt, &chr, 1)) {
+                perror("read failed on on packet pipe");
+            } else {
+                if(EOF == chr) {
+                    printf("detected exit of packet logger process\n");
+                    exited++;
+                } else if('\n' == chr) {
+                    // dump the buffer
+                    printf("%s\n", pkt_buff.c_str());
+                    pkt_buff = "";
+                } else {
+                    // buffer the character
+                    pkt_buff += chr;
+                }
+            }
+        }
     }
 }
 
@@ -201,12 +382,69 @@ int main() {
         exit(FAILURE);
     }
 
-    // TODO set up pipes so stdout of sub processes gets serialized line-by-line and printed to this stdout
-    // TODO kick off processes to log system messages and packets
+    // create pipes for stdout of sub processes
+    int msg_pipes[2];
+    if(-1 == pipe(msg_pipes)) {
+        perror("Failed to create message logger stdout pipe");
+        exit(FAILURE);
+    }
 
-    log_messages(msg_path.c_str());
+    int pkt_pipes[2];
+    if(-1 == pipe(pkt_pipes)) {
+        perror("Failed to create packet logger stdout pipe");
+        exit(FAILURE);
+    }
 
-    // wait for exit of those processes
+    // kick off a process for the message logger
+    pid_t pid = fork();
+    if(0 == pid) {
+        // swap out stdout with the write end of the pipe
+        if(-1 == dup2(msg_pipes[1], 1)) {
+            perror("dup2 failed for message logger pipe");
+            exit(FAILURE);
+        }
+
+        // don't need the read end of the pipe
+        close(msg_pipes[0]);
+
+        log_messages(msg_path.c_str());
+
+        // should never get here
+        printf("Message logger process returned unexpectedly!\n");
+        exit(FAILURE);
+    }
+
+    printf("Started message logger process with PID %d\n", pid);
+
+    // kick off a process for the packet logger
+    pid = fork();
+    if(0 == pid) {
+        // swap out stdout with the write end of the pipe
+        if(-1 == dup2(pkt_pipes[1], 1)) {
+            perror("dup2 failed for packet logger pipe");
+            exit(FAILURE);
+        }
+
+        // don't need the read end of the pipe
+        close(pkt_pipes[0]);
+
+        // TODO have packet reporting rate passed in as a parameter
+        log_packets(packets_path.c_str(), 1);
+
+        // should never get here
+        printf("Packet logger process returned unexpectedly!\n");
+        exit(FAILURE);
+    }
+
+    printf("Started packet logger process with PID %d\n", pid);
+
+    // don't need the write ends of the pipes
+    close(msg_pipes[1]);
+    close(pkt_pipes[1]);
+
+    // pipe the output to stdout
+    printf("\n");
+    pipe_output(msg_pipes[0], pkt_pipes[0]);
 
     printf("\nAll logging processes exited, cleaning up\n");
 
