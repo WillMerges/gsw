@@ -1,6 +1,6 @@
 # logging daemon
 
-TARGET = logd
+TARGET = gsw_logd
 
 CXX = g++
 CC = g++
