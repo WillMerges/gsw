@@ -1,0 +1,64 @@
+here's what I'm thinking for how telemetry works
+
+goals:
+ - never block a write operation
+ - provide reads as fast as possible
+ - provide a blocking mechanism for waiting for writes
+      - don't burn CPU to do this
+
+
+
+
+here's how old GSW did it
+ - single lock (multiple reader/writer, writers priority)
+ - writers obtained lock and dumped whole packets to shm
+ - readers would obtain lock and cache contents of packet
+    - if packet contents old, block on a counter in shm using futex
+
+
+new idea?
+
+decommutation (decom) process (one per data source):
+ - receive data from data source (right now just UDP)
+ - log data to disk using a logger (quickly queues in a UNIX socket)
+ - extracts measurements from the data (depending on config)
+ - sends the extracted measurement to the broker using a shared triple buffer
+
+ broker process (one per measurement):
+  - waits for update of triple buffer
+  - application processes can request to subscribe to the broker to receive
+    updates of a particular measurement
+      - constructs a triple buffer in shared memory between it and the application
+
+
+"triple buffer" could be replaced with in-memory queue, socket, mqueue but triple
+buffer seems the fastest
+
+how does the triple buffer work?
+ - there are three buffers all of identical size
+ - initially mark one as SPARE, one as WRITE0, and one as WRITE1 (mark using atomics)
+ - there is an eventfd file descriptor that both processes have
+
+ writer:
+  - dump data to the buffer marked WRITE0
+  - mark the buffer WRITE1 as WRITE0
+      - if there is no WRITE1, spinlock until there is one
+      - the reader just briefly performed a swap
+  - mark the original buffer as WRITE1
+  - set eventfd to 0
+
+ reader:
+  - set eventfd to 1
+  - atomically swap WRITE1 and SPARE
+      - if there is no WRITE1, spinlock until there is one (writer is doing a swap)
+      - mark WRITE1 as SPARE
+      - mark the original SPARE as WRITE1 (this will briefly stall writes)
+  - read the buffer new SPARE
+    - if buffer is empty, block until eventfd is 0 (or record the fd as blocking so select/poll/epoll can be used)
+    - otherwise mark buffer in new SPARE as empty
+
+
+this design is nice because it's fast from decom -> broker without slowing decom down at all
+while broker gets slower as more applications are added, at least it doesn't slow down decom
+some priority and load balancing could be added to the broker (like rate limiting applications)
+and the triple buffer is still fast the applications so it limits this badness
