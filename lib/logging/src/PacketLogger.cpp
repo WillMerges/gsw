@@ -19,11 +19,11 @@ PacketLogger::PacketLogger() : Logger(PacketLoggerDecls::ADDRESS_FILE) {
 
 /// @brief log a packet
 /// @param buff     a buffer containing the packet data
+/// @param len      the length of buff in bytes
 /// @param port     the UDP destination port of the packet, in system
 ///                 endianness
-/// @param len      the length of buff in bytes
 /// @return
-RetType PacketLogger::log_packet(uint8_t* buff, uint16_t port, size_t len) {
+RetType PacketLogger::log_packet(uint8_t* buff, size_t len, uint16_t port) {
     m_info.timestamp = time_util::now();
     m_info.port = port;
     m_info.len = len;

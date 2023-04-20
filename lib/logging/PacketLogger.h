@@ -37,11 +37,11 @@ public:
 
     /// @brief log a packet
     /// @param buff     a buffer containing the packet data
+    /// @param len      the length of buff in bytes
     /// @param port     the UDP destination port of the packet, in system
     ///                 endianness
-    /// @param len      the length of buff in bytes
     /// @return
-    RetType log_packet(uint8_t* buff, uint16_t port, size_t len);
+    RetType log_packet(uint8_t* buff, size_t len, uint16_t port);
 
 private:
     PacketLoggerDecls::info_t m_info;

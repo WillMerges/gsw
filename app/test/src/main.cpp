@@ -11,5 +11,5 @@ int main() {
 
     PacketLogger plogger;
     const char* dat = "hello world!";
-    plogger.log_packet((uint8_t*)dat, 8000, 12);
+    plogger.log_packet((uint8_t*)dat, 12, 8000);
 }

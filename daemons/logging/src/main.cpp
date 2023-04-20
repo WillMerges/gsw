@@ -14,6 +14,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <sys/select.h>
+#include <signal.h>
 
 #include "lib/time/time.h"
 #include "lib/logging/MessageLogger.h"
@@ -40,9 +41,29 @@ const char* message_color[MessageLoggerDecls::NUM_MESSAGE_T] = \
 };
 
 
+bool should_exit = false;
+
+/// @brief signal handler for the message logger that sets 'should_exit' to true
+///        and sends a dummy message from a logger
+///
+///        the dummy message is sent in case the message logging process is
+///        blocked in a 'recv' call
+void sig_msg(int) {
+    should_exit = true;
+
+    MessageLogger logger{""};
+    logger.log_message("");
+}
+
 /// @brief log system messages
 /// @param dir  the directory to place message logs
 void log_messages(const char* dir) {
+    // setup signal handler to set the 'should_exit' flag
+    // NOTE: this will only fail if signum is invalid
+    signal(SIGINT, sig_msg);
+    signal(SIGQUIT, sig_msg);
+    signal(SIGTERM, sig_msg);
+
     // open the UNIX socket that system messages are sent to
     int sd = socket(AF_UNIX, SOCK_DGRAM, 0);
 
@@ -83,7 +104,7 @@ void log_messages(const char* dir) {
     }
 
     size_t file_index = 0;
-    while(1) {
+    while(!should_exit) {
         std::string filename = dir;
         filename += "/messages-";
         filename += std::to_string(file_index);
@@ -105,8 +126,14 @@ void log_messages(const char* dir) {
 
         size_t lines = 1;
         uint8_t buff[Logger::MAX_LOG_SIZE + sizeof(MessageLoggerDecls::info_t)];
-        while(lines < MAX_LINES_PER_FILE) {
+        while(lines < MAX_LINES_PER_FILE && !should_exit) {
             ssize_t len = recv(sd, buff, Logger::MAX_LOG_SIZE + sizeof(MessageLoggerDecls::info_t), 0);
+
+            // it's possible we were unblocked by the dummy message sent from
+            // within the signal handler
+            if(should_exit) {
+                break;
+            }
 
             if(len < (ssize_t)sizeof(MessageLoggerDecls::info_t)) {
                 // no data received, try again
@@ -145,8 +172,22 @@ void log_messages(const char* dir) {
         fclose(f);
         file_index++;
     }
+
+    close(sd);
+    exit(SUCCESS);
 }
 
+/// @brief signal handler for the packet logger that sets 'should_exit' to true
+///        and sends a dummy packet from a logger
+///
+///        the dummy packet is sent in case the message logging process is
+///        blocked in a 'recv' call
+void sig_pkt(int) {
+    should_exit = true;
+
+    PacketLogger logger{};
+    logger.log_packet(NULL, 0, 8000);
+}
 
 /// @brief log packets
 /// @param dir          the directory to place packet logs
@@ -154,6 +195,12 @@ void log_messages(const char* dir) {
 // TODO check sizes are correct according to configuration?
 //      maybe also configure whether to log short packets
 void log_packets(const char* dir, size_t print_rate) {
+    // setup signal handler to set the 'should_exit' flag
+    // NOTE: this will only fail if signum is invalid
+    signal(SIGINT, sig_pkt);
+    signal(SIGQUIT, sig_pkt);
+    signal(SIGTERM, sig_pkt);
+
     // open the UNIX socket that system messages are sent to
     int sd = socket(AF_UNIX, SOCK_DGRAM, 0);
 
@@ -194,7 +241,7 @@ void log_packets(const char* dir, size_t print_rate) {
     }
 
     size_t file_index = 0;
-    while(1) {
+    while(!should_exit) {
         std::string filename = dir;
         filename += "/packets-";
         filename += std::to_string(file_index);
@@ -211,8 +258,14 @@ void log_packets(const char* dir, size_t print_rate) {
         size_t total_packets = 0;
         uint8_t buff[Logger::MAX_LOG_SIZE + sizeof(PacketLoggerDecls::info_t)];
 
-        while(written < (uint32_t)MAX_FILE_SIZE) {
+        while(written < (uint32_t)MAX_FILE_SIZE && !should_exit) {
             ssize_t len = recv(sd, buff, Logger::MAX_LOG_SIZE + sizeof(PacketLoggerDecls::info_t), 0);
+
+            // it's possible we were unblocked by the dummy message sent from
+            // within the signal handler
+            if(should_exit) {
+                break;
+            }
 
             if(len < (ssize_t)sizeof(PacketLoggerDecls::info_t)) {
                 // no data received, try again
@@ -241,6 +294,9 @@ void log_packets(const char* dir, size_t print_rate) {
         fclose(f);
         file_index++;
     }
+
+    close(sd);
+    exit(0);
 }
 
 
@@ -264,13 +320,32 @@ void pipe_output(int msg, int pkt) {
         nfds = pkt + 1;
     }
 
-    int exited = 0;
-    while(exited < 2) {
+    uint8_t cont = 0;
+    while(1) {
         FD_ZERO(&set);
-        FD_SET(msg, &set);
-        FD_SET(pkt, &set);
+        cont = 0;
+
+        if(msg != -1) {
+            FD_SET(msg, &set);
+            cont = 1;
+        }
+
+        if(pkt != -1) {
+            FD_SET(pkt, &set);
+            cont = 1;
+        }
+
+        if(!cont) {
+            // both sub processes closed their pipes
+            break;
+        }
 
         if(-1 == select(nfds, &set, NULL, NULL, NULL)) {
+            if(errno == EINTR) {
+                // signal
+                continue;
+            }
+
             perror("select failed, trying again");
             continue;
         }
@@ -278,13 +353,14 @@ void pipe_output(int msg, int pkt) {
         if(FD_ISSET(msg, &set)) {
             // data on msg
             char chr;
-            if(1 != read(msg, &chr, 1)) {
-                perror("read failed on on message pipe");
-            } else {
-                if(EOF == chr) {
-                    printf("detected exit of message logger process\n");
-                    exited++;
-                } else if('\n' == chr) {
+            ssize_t len = read(msg, &chr, 1);
+            if(0 == len) {
+                // EOF, write end of pipe closed (by sub process exit)
+                printf("detected exit of message logger process\n");
+                close(msg);
+                msg = -1;
+            } else if(1 == len){
+                if('\n' == chr) {
                     // dump the buffer
                     printf("%s\n", msg_buff.c_str());
                     msg_buff = "";
@@ -292,19 +368,26 @@ void pipe_output(int msg, int pkt) {
                     // buffer the character
                     msg_buff += chr;
                 }
+            } else {
+                if(errno == EINTR) {
+                    // signal
+                    continue;
+                }
+
+                perror("read failed on on message pipe");
             }
         }
 
         if(FD_ISSET(pkt, &set)) {
             // data on pkt
             char chr;
-            if(1 != read(pkt, &chr, 1)) {
-                perror("read failed on on packet pipe");
-            } else {
-                if(EOF == chr) {
-                    printf("detected exit of packet logger process\n");
-                    exited++;
-                } else if('\n' == chr) {
+            ssize_t len = read(pkt, &chr, 1);
+            if(0 == len) {
+                printf("detected exit of packet logger process\n");
+                close(pkt);
+                pkt = -1;
+            } else if(1 == len){
+                if('\n' == chr) {
                     // dump the buffer
                     printf("%s\n", pkt_buff.c_str());
                     pkt_buff = "";
@@ -312,12 +395,24 @@ void pipe_output(int msg, int pkt) {
                     // buffer the character
                     pkt_buff += chr;
                 }
+            } else {
+                if(errno == EINTR) {
+                    // signal
+                    continue;
+                }
+
+                perror("read failed on on packet pipe");
             }
         }
     }
 }
 
+/// @brief ignore signal
+void sig_ignore(int) {
+    return;
+}
 
+// TODO handle signals and graciously exit
 int main() {
     const char* curr_time = time_util::to_string(time_util::now());
 
@@ -369,7 +464,6 @@ int main() {
         exit(FAILURE);
     }
 
-
     // update 'current' sym link
     std::string link_path = path + "/current";
 
@@ -394,6 +488,13 @@ int main() {
         perror("Failed to create packet logger stdout pipe");
         exit(FAILURE);
     }
+
+    // ignore all signals from now on
+    // only exit when the sub-processes that are about to be created exit
+    // NOTE: this will only fail if signum is invalid
+    signal(SIGINT, sig_ignore);
+    signal(SIGQUIT, sig_ignore);
+    signal(SIGTERM, sig_ignore);
 
     // kick off a process for the message logger
     pid_t pid = fork();
@@ -450,12 +551,17 @@ int main() {
 
     // remove the 'current' sym link
     if(-1 == remove(link_path.c_str())) {
-        perror("Failed to remove 'current' sym link");
+        perror("Failed to remove 'current' symbolic link");
         exit(FAILURE);
     }
 
     // update the 'latest' sym link
     link_path = path + "/latest";
+
+    if(-1 == remove(link_path.c_str())) {
+        perror("Failed to remove 'latest' symbolic link");
+        exit(FAILURE);
+    }
 
     if(-1 == symlink(log_path.c_str(), link_path.c_str())) {
         perror("Failed to update 'latest' symbolic link");
