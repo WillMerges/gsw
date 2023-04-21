@@ -36,6 +36,12 @@
 
 /// @brief a triple buffer
 /// @tparam TYPE    the type of each buffer
+/// Use 'write' to allocate a buffer for writing to
+/// the next call to 'write' will allocate a new buffer and flush the old one to be read
+/// Use 'read' to allocate a buffer for reading (or return the same buffer if no writes were made)
+/// This is completely thread/ISR safe
+/// If the rate of writes is greater than reads, some data will be dropped
+/// If the rate of reads is greater than writes, read will return the same buffer multiple times
 template <typename TYPE>
 class TripleBuffer {
 public:
