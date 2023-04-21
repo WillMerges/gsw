@@ -45,17 +45,6 @@
 template <typename TYPE>
 class TripleBuffer {
 public:
-    /// @brief constructor
-    TripleBuffer() {
-        // initial setup is
-        // new_write = 0
-        // dirty = 0
-        // clean = 1
-        // snap = 2
-
-        ctl = 0b0000110;
-    }
-
     /// @brief obtain a buffer for reading
     /// @return a pointer to a buffer to be read from
     TYPE* read() {
@@ -63,7 +52,7 @@ public:
         uint_fast8_t ctl_new;
 
         do {
-            ctl_curr = ctl;
+            ctl_curr = m_ctl;
 
             if(!(ctl_curr & 0b1000000)) {
                 // no new write to the dirty buffer, no reason to swap it out
@@ -73,10 +62,10 @@ public:
             // swaps the clean and snap buffers
             //       | dont change dirty    | snap to clean            |  clean to snap |
             ctl_new = (ctl_curr & 0b110000) | ((ctl_curr & 0b11) << 2) | ((ctl_curr & 0b1100) >> 2);
-        } while(!__sync_bool_compare_and_swap(&ctl, ctl_curr, ctl_new));
+        } while(!__sync_bool_compare_and_swap(&m_ctl, ctl_curr, ctl_new));
 
         // return the new (or current if no new write) snap buffer
-        return &buffs[SNAP_INDEX(ctl)];
+        return &m_buffs[SNAP_INDEX(m_ctl)];
     }
 
     /// @brief obtain a buffer for writing
@@ -86,20 +75,48 @@ public:
         uint_fast8_t ctl_new;
 
         do {
-            ctl_curr = ctl;
+            ctl_curr = m_ctl;
             // swaps the clean and dirty buffers, also setting the new write flag
             //       | new write |  clean to dirty           |  dirty to clean             | leave snap alone
             ctl_new = 0b1000000 | ((ctl_curr & 0b1100) << 2) | ((ctl_curr & 0b110000) >> 2) | (ctl_curr & 0b11);
 
             // try and atomically swap ctl and ctl_new, unless ctl has changed already
-        } while(!__sync_bool_compare_and_swap(&ctl, ctl_curr, ctl_new));
+        } while(!__sync_bool_compare_and_swap(&m_ctl, ctl_curr, ctl_new));
 
         // return the new dirty buffer to be written to
-        return &buffs[DIRTY_INDEX(ctl)];
+        return &m_buffs[DIRTY_INDEX(m_ctl)];
     }
+
+protected:
+    /// @brief protected constructor
+    /// @param ctl      reference to an integer to use for control fields
+    /// @param buffs    array of 3 TYPE objects to use as buffers
+    TripleBuffer(volatile uint_fast8_t& ctl, TYPE buffs[3]) : m_ctl(ctl),
+                                                              m_buffs(buffs) {
+        // initial setup is
+        // new_write = 0
+        // dirty = 0
+        // clean = 1
+        // snap = 2
+
+        ctl = 0b0000110;
+    }
+
 private:
-    volatile uint_fast8_t ctl;
-    TYPE buffs[3];
+    volatile uint_fast8_t& m_ctl;
+    TYPE* m_buffs;
+};
+
+/// @brief triple buffer allocated to local memory (e.g. non-shared)
+/// @tparam TYPE    the type of each buffer
+template <typename TYPE>
+class LocalTripleBuffer : public TripleBuffer<TYPE> {
+public:
+    /// @brief public constructor
+    LocalTripleBuffer() : TripleBuffer<TYPE>(m_ctl, m_buffs) {}
+private:
+    volatile uint_fast8_t m_ctl;
+    TYPE m_buffs[3];
 };
 
 #endif

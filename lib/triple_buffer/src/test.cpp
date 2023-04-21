@@ -3,7 +3,7 @@
 #include "lib/triple_buffer/TripleBuffer.h"
 
 int main() {
-    TripleBuffer<int> buff{};
+    LocalTripleBuffer<int> buff{};
 
     int* w;
     int* r;
