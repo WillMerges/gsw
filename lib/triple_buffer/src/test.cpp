@@ -1,6 +1,6 @@
 #include <stdio.h>
 
-#include "lib/triple_buffer/TripleBuffer.h"
+#include "lib/triple_buffer/LocalTripleBuffer.h"
 
 int main() {
     LocalTripleBuffer<int> buff{};
