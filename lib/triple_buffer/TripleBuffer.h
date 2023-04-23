@@ -46,7 +46,8 @@ template <typename TYPE>
 class TripleBuffer {
 public:
     /// @brief obtain a buffer for reading
-    /// @return a pointer to a buffer to be read from
+    /// @return a pointer to a buffer to be read from or NULL if no new writes
+    ///         were made since the last call to 'read'
     TYPE* read() {
         uint_fast8_t ctl_curr;
         uint_fast8_t ctl_new;
@@ -56,7 +57,7 @@ public:
 
             if(!(ctl_curr & 0b1000000)) {
                 // no new write to the dirty buffer, no reason to swap it out
-                break;
+                return NULL;
             }
 
             // swaps the clean and snap buffers
@@ -68,7 +69,7 @@ public:
         return &m_buffs[SNAP_INDEX(m_ctl)];
     }
 
-    /// @brief obtain a buffer for writing
+    /// @brief obtain a buffer for writing, flushing the last write buffer
     /// @return a pointer to a buffer to be written to
     TYPE* write() {
         uint_fast8_t ctl_curr;
@@ -105,18 +106,6 @@ protected:
 private:
     volatile uint_fast8_t& m_ctl;
     TYPE* m_buffs;
-};
-
-/// @brief triple buffer allocated to local memory (e.g. non-shared)
-/// @tparam TYPE    the type of each buffer
-template <typename TYPE>
-class LocalTripleBuffer : public TripleBuffer<TYPE> {
-public:
-    /// @brief public constructor
-    LocalTripleBuffer() : TripleBuffer<TYPE>(m_ctl, m_buffs) {}
-private:
-    volatile uint_fast8_t m_ctl;
-    TYPE m_buffs[3];
 };
 
 #endif
